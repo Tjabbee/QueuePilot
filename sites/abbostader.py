@@ -1,3 +1,9 @@
+import time
+import os
+import requests
+import json
+import re
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -6,14 +12,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 
-import time
-import os
-import requests
-import json
-import re
 
-
-def get_koepoang(driver):
+def get_points(driver):
     try:
         session = requests.Session()
         cookies = driver.get_cookies()
@@ -35,7 +35,6 @@ def get_koepoang(driver):
 
         json_data = json.loads(match.group(1))
         koepoang = json_data['data']['koerochprenumerationer@STD']['kodagar']
-        print(f"🏆 Köpoäng: {koepoang} poäng")
         return koepoang
 
     except Exception as e:
@@ -94,10 +93,10 @@ def run_ab_bostader():
 
         time.sleep(5)  # Vänta på eventuell redirect
 
-        print(driver.current_url)
         if "mina-sidor" in driver.current_url.lower():
             print("✅ Inloggning lyckades!")
-            get_koepoang(driver)
+            print(f"🏆 Köpoäng: {get_points(driver)} poäng")
+            logout(driver)
         else:
             print("❌ Inloggning misslyckades, kontrollera dina uppgifter eller sidan.")
 
@@ -106,3 +105,7 @@ def run_ab_bostader():
 
     finally:
         driver.quit()
+
+def logout(driver):
+    driver.get("https://www.bostaderiboras.se/logga-in/")
+    print("🚪 Loggade ut från AB Bostäder.")

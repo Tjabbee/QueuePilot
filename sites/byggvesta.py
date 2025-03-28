@@ -1,4 +1,4 @@
-# For obo.se (Örebrostäder)
+# For PLACEHOLDER.se (Momentum)
 import os
 import base64
 import hashlib
@@ -9,13 +9,12 @@ from utils.momentum_client import MomentumClient
 
 load_dotenv(dotenv_path="config/.env")
 
-USERNAME = os.getenv("OBO_USERNAME")
-PASSWORD = os.getenv("OBO_PASSWORD")
-BASE_URL = "https://obo-fastighet.momentum.se/Prod/Obo/PmApi/v2"
+BYGGVESTA_USERNAME = os.getenv("BYGGVESTA_USERNAME")
+BYGGVESTA_PASSWORD = os.getenv("BYGGVESTA_PASSWORD")
 
+BASE_URL = "https://byggvesta-fastighet.momentum.se/Prod/Byggvesta/PmApi/v2"
 API_KEY = "pJnKrR6B3FzRNFsF33xL8LhSs55KPJrm"
-DEVICE_KEY = "iykvhw3zdsbxfo07itqg9p"
-
+DEVICE_KEY = "ffa3ca500aa6449a929512c913714777"
 
 def generate_pkce():
     code_verifier = base64.urlsafe_b64encode(
@@ -24,7 +23,6 @@ def generate_pkce():
     code_challenge = base64.urlsafe_b64encode(
         sha256).rstrip(b"=").decode("utf-8")
     return code_verifier, code_challenge
-
 
 def login(username, password):
     code_verifier, code_challenge = generate_pkce()
@@ -35,7 +33,7 @@ def login(username, password):
         "method": "password",
         "identifier": username,
         "key": password,
-        "returnAddress": "https://minasidor.obo.se/signin",
+        "returnAddress": f"https://minasidor.byggvesta.se/signin",
         "codeChallenge": code_challenge,
         "codeChallengeMethod": "S256",
         "nonce": nonce,
@@ -43,8 +41,13 @@ def login(username, password):
         "requestRefreshToken": True
     }
 
-    response = requests.post(f"{BASE_URL}/auth", json=payload)
-    data = response.json()
+    response = requests.post(f"{BASE_URL}/auth", json=payload, timeout=5)
+    try:
+        data = response.json()
+    except Exception as e:
+        print("⚠️ Kunde inte tolka svaret som JSON:")
+        print(response.text)
+        raise e
 
     if "completed" in data:
         print("✅ Inloggning lyckades!")
@@ -53,7 +56,6 @@ def login(username, password):
     else:
         print("❌ Inloggning misslyckades:", data)
         return None
-
 
 def get_points(client: MomentumClient):
     resp = client.get("/market/applicant/status")
@@ -69,13 +71,12 @@ def get_points(client: MomentumClient):
         points = queue.get("value", "okänt")
         unit = queue.get("valueUnitDisplayName", "")
         print(f" - {name}: {points} {unit}")
-        
-    return points
 
+    return points
 
 def logout(client: MomentumClient):
     payload = {
-        "returnAddress": "https://minasidor.obo.se/",
+        "returnAddress": "https://minasidor.byggvesta.se/",
         "global": False,
         "keepSingleSignOn": False
     }
@@ -85,9 +86,8 @@ def logout(client: MomentumClient):
     else:
         print(f"⚠️ Utloggning misslyckades ({resp.status_code}): {resp.text}")
 
-
-def run_obo():
-    token = login(USERNAME, PASSWORD)
+def run_byggvesta():
+    token = login(BYGGVESTA_USERNAME, BYGGVESTA_PASSWORD)
     if not token:
         return
 
@@ -101,6 +101,5 @@ def run_obo():
     get_points(client)
     logout(client)
 
-
 if __name__ == "__main__":
-    run_obo()
+    run_byggvesta()

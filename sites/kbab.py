@@ -55,7 +55,7 @@ def login(username, password):
         return None
 
 
-def check_queue_points(client: MomentumClient):
+def get_points(client: MomentumClient):
     resp = client.get("/market/applicant/status")
     if resp.status_code != 200:
         print("❌ Kunde inte hämta poäng:", resp.status_code)
@@ -69,6 +69,8 @@ def check_queue_points(client: MomentumClient):
         points = queue.get("value", "okänt")
         unit = queue.get("valueUnitDisplayName", "")
         print(f" - {name}: {points} {unit}")
+        
+    return points
 
 
 def logout(client: MomentumClient):
@@ -96,7 +98,7 @@ def run_kbab():
     )
     client.set_token(token)
 
-    check_queue_points(client)
+    get_points(client)
     logout(client)
 
 

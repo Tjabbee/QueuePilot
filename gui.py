@@ -1,8 +1,13 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
+
+# AUTOIMPORT
+from sites.nynasbo import run_nynasbo
+from sites.byggvesta import run_byggvesta
 from sites.kbab import run_kbab
 from sites.obo import run_obo
 from sites.abbostader import run_ab_bostader
+from sites.hemvist import run_hemvist
 
 import os
 import datetime
@@ -11,9 +16,13 @@ import contextlib
 
 # Mappa site-namn till funktioner
 SITE_FUNCTIONS = {
+    # AUTOSITES
+    "Nynasbo": run_nynasbo,
+    "Byggvesta": run_byggvesta,
     "AB Bostäder": run_ab_bostader,
     "Karlstad Bostads AB": run_kbab,
-    "Örebro Bostäder": run_obo
+    "Örebro Bostäder": run_obo,
+    "Hemvist": run_hemvist
 }
 
 # Se till att logs-mappen finns

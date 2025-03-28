@@ -1,9 +1,13 @@
 import argparse
 import sys
 
+# AUTOIMPORT
+from sites.nynasbo import run_nynasbo
+from sites.byggvesta import run_byggvesta
 from sites.kbab import run_kbab
 from sites.obo import run_obo
 from sites.abbostader import run_ab_bostader
+from sites.hemvist import run_hemvist
 
 
 def main():
@@ -23,10 +27,17 @@ def main():
 
     if site == "kbab":
         run_kbab()
+    # AUTORUN
+    elif args.site == 'nynasbo':
+        run_nynasbo()
+    elif args.site == 'byggvesta':
+        run_byggvesta()
     elif site == "obo":
         run_obo()
     elif site == "abbostader":
         run_ab_bostader()
+    elif site == "hemvist":
+        run_hemvist()
     else:
         print(f"❌ Unknown site: {site}")
         sys.exit(1)
