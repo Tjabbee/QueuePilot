@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 from sites.kbab import run_kbab
 from sites.obo import run_obo
+from sites.abbostader import run_ab_bostader
 
 import os
 import datetime
@@ -10,8 +11,9 @@ import contextlib
 
 # Mappa site-namn till funktioner
 SITE_FUNCTIONS = {
-    "KBAB": run_kbab,
-    "ÖBO": run_obo,
+    "AB Bostäder": run_ab_bostader,
+    "Karlstad Bostads AB": run_kbab,
+    "Örebro Bostäder": run_obo
 }
 
 # Se till att logs-mappen finns

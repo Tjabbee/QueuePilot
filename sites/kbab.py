@@ -43,7 +43,7 @@ def login(username, password):
         "requestRefreshToken": True
     }
 
-    response = requests.post(f"{BASE_URL}/auth", json=payload)
+    response = requests.post(f"{BASE_URL}/auth", json=payload, timeout=5)
     data = response.json()
 
     if "completed" in data:
