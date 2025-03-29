@@ -1,4 +1,4 @@
-# Housing Queue Auto Login & Points Tracker
+# QueuePilot - Housing Queue Auto Login & Points Tracker
 
 This project automates monthly logins to various Swedish municipal housing queue websites that use the Momentum Property Management Platform. The purpose is to retain your queue points, which can be lost if you don't log in regularly.
 
