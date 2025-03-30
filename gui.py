@@ -1,18 +1,18 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext
-
-# AUTOIMPORT
-from sites.nynasbo import run_nynasbo
-from sites.byggvesta import run_byggvesta
-from sites.kbab import run_kbab
-from sites.obo import run_obo
-from sites.abbostader import run_ab_bostader
-from sites.hemvist import run_hemvist
-
 import os
 import datetime
 import io
 import contextlib
+
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+
+# AUTOIMPORT
+from sites.momentum.nynasbo import run_nynasbo
+from sites.momentum.byggvesta import run_byggvesta
+from sites.momentum.kbab import run_kbab
+from sites.momentum.obo import run_obo
+from sites.abbostader import run_ab_bostader
+from sites.hemvist import run_hemvist
 
 # Mappa site-namn till funktioner
 SITE_FUNCTIONS = {

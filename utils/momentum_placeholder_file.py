@@ -1,4 +1,4 @@
-# For PLACEHOLDER.se (Momentum)
+# For LOWERCASE.se (Momentum)
 import os
 import base64
 import hashlib
