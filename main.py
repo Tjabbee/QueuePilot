@@ -26,7 +26,6 @@ def get_all_sites():
         raise Exception(
             "Inga uppgifter hittades för alla sites")
 
-    print(result)
     return result
 
 def main():
