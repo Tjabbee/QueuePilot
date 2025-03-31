@@ -1,14 +1,33 @@
+import os
 import argparse
-import sys
+import mysql.connector
+from dotenv import load_dotenv
 
-# AUTOIMPORT
-from sites.momentum.nynasbo import run_nynasbo
-from sites.momentum.byggvesta import run_byggvesta
-from sites.momentum.kbab import run_kbab
-from sites.momentum.obo import run_obo
-from sites.abbostader import run_ab_bostader
-from sites.hemvist import run_hemvist
+from sites.momentum import run
 
+load_dotenv(dotenv_path="app/config/.env")
+
+def get_all_sites():
+    conn = mysql.connector.connect(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        database=os.getenv("DB_NAME")
+    )
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute(
+        "SELECT url_name FROM sites"
+    )
+    result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    if not result:
+        raise Exception(
+            "Inga uppgifter hittades för alla sites")
+
+    print(result)
+    return result
 
 def main():
     parser = argparse.ArgumentParser(
@@ -22,33 +41,15 @@ def main():
     )
 
     args = parser.parse_args()
-
     site = args.site.lower()
 
+    sites = get_all_sites()
+    
     if site == "all":
-        # FUNCTION
-        run_ab_bostader()
-        run_byggvesta()
-        run_hemvist()
-        run_kbab()
-        run_nynasbo()
-        run_obo()
-    elif site == "kbab":
-        run_kbab()
-    # AUTORUN
-    elif args.site == 'nynasbo':
-        run_nynasbo()
-    elif args.site == 'byggvesta':
-        run_byggvesta()
-    elif site == "obo":
-        run_obo()
-    elif site == "abbostader":
-        run_ab_bostader()
-    elif site == "hemvist":
-        run_hemvist()
+        for site in sites:
+            run(site["url_name"])
     else:
-        print(f"❌ Unknown site: {site}")
-        sys.exit(1)
+        run(site)
 
 
 if __name__ == "__main__":

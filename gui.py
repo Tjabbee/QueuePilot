@@ -6,11 +6,6 @@ import contextlib
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 
-# AUTOIMPORT
-from sites.momentum.nynasbo import run_nynasbo
-from sites.momentum.byggvesta import run_byggvesta
-from sites.momentum.kbab import run_kbab
-from sites.momentum.obo import run_obo
 from sites.abbostader import run_ab_bostader
 from sites.hemvist import run_hemvist
 

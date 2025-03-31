@@ -1,20 +1,60 @@
-# For PLACEHOLDER.se (Momentum)
+# For momentum sites
 import os
 import base64
 import hashlib
 import secrets
 import requests
+import mysql.connector
 from dotenv import load_dotenv
 from utils.momentum_client import MomentumClient
 
-load_dotenv(dotenv_path="config/.env")
+load_dotenv(dotenv_path="app/config/.env")
 
-NYNASBO_USERNAME = os.getenv("NYNASBO_USERNAME")
-NYNASBO_PASSWORD = os.getenv("NYNASBO_PASSWORD")
 
-BASE_URL = "https://nynasbo-fastighet.momentum.se/Prod/Nynasbo/PmApi/v2"
-API_KEY = "pJnKrR6B3FzRNFsF33xL8LhSs55KPJrm"
-DEVICE_KEY = "d756db0962d84e6a9349a221a075c6de"
+def fetch_credentials(site, customer_id):
+    conn = mysql.connector.connect(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        database=os.getenv("DB_NAME")
+    )
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT username, password FROM credentials WHERE site=%s AND customer_id=%s AND active=1",
+        (site, customer_id)
+    )
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not result:
+        raise Exception(
+            f"Inga uppgifter hittades för kund {customer_id} på site {site}")
+
+    return result["username"], result["password"]
+
+def get_site(site):
+    conn = mysql.connector.connect(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        database=os.getenv("DB_NAME")
+    )
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM sites WHERE url_name=%s",
+        (site,)
+    )
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not result:
+        raise Exception(
+            f"Inga uppgifter hittades på site {site}")
+
+    return result["url_name"], result["base_url"], result["api_key"]
+
 
 def generate_pkce():
     code_verifier = base64.urlsafe_b64encode(
@@ -24,7 +64,8 @@ def generate_pkce():
         sha256).rstrip(b"=").decode("utf-8")
     return code_verifier, code_challenge
 
-def login(username, password):
+
+def login(username, password, url_name, base_url):
     code_verifier, code_challenge = generate_pkce()
     nonce = secrets.token_urlsafe(16)
     state = secrets.token_urlsafe(16)
@@ -33,7 +74,7 @@ def login(username, password):
         "method": "password",
         "identifier": username,
         "key": password,
-        "returnAddress": "https://minasidor.nynasbo.se/signin",
+        "returnAddress": f"https://minasidor.{url_name}.se/signin",
         "codeChallenge": code_challenge,
         "codeChallengeMethod": "S256",
         "nonce": nonce,
@@ -41,13 +82,8 @@ def login(username, password):
         "requestRefreshToken": True
     }
 
-    response = requests.post(f"{BASE_URL}/auth", json=payload, timeout=5)
-    try:
-        data = response.json()
-    except Exception as e:
-        print("⚠️ Kunde inte tolka svaret som JSON:")
-        print(response.text)
-        raise e
+    response = requests.post(f"{base_url}/auth", json=payload, timeout=5)
+    data = response.json()
 
     if "completed" in data:
         print("✅ Inloggning lyckades!")
@@ -56,6 +92,7 @@ def login(username, password):
     else:
         print("❌ Inloggning misslyckades:", data)
         return None
+
 
 def get_points(client: MomentumClient):
     resp = client.get("/market/applicant/status")
@@ -74,9 +111,10 @@ def get_points(client: MomentumClient):
 
     return points
 
-def logout(client: MomentumClient):
+
+def logout(client: MomentumClient, url_name):
     payload = {
-        "returnAddress": "https://minasidor.nynasbo.se/",
+        "returnAddress": f"https://minasidor.{url_name}.se/",
         "global": False,
         "keepSingleSignOn": False
     }
@@ -86,20 +124,23 @@ def logout(client: MomentumClient):
     else:
         print(f"⚠️ Utloggning misslyckades ({resp.status_code}): {resp.text}")
 
-def run_nynasbo():
-    token = login(NYNASBO_USERNAME, NYNASBO_PASSWORD)
+
+def run(site):
+    url_name, base_url, api_key = get_site(site)
+    username, password = fetch_credentials(url_name, 1)
+    token = login(username, password, url_name, base_url)
     if not token:
         return
 
     client = MomentumClient(
-        base_url=BASE_URL,
-        api_key=API_KEY,
-        device_key=DEVICE_KEY
+        base_url=base_url,
+        api_key=api_key
     )
     client.set_token(token)
 
     get_points(client)
-    logout(client)
+    logout(client, url_name)
+
 
 if __name__ == "__main__":
-    run_nynasbo()
+    run(site="")
