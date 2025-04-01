@@ -1,80 +1,91 @@
 # QueuePilot - Housing Queue Auto Login & Points Tracker
 
-This project automates monthly logins to various Swedish municipal housing queue websites that use the Momentum Property Management Platform. The purpose is to retain your queue points, which can be lost if you don't log in regularly.
+QueuePilot automates monthly logins to various Swedish municipal housing queue websites using the Momentum Property Management Platform. It prevents loss of queue points and retrieves your current status.
 
-It also retrieves your current queue points and optionally logs out after the session. The project supports multiple sites using different domains but similar backend APIs.
+---
 
 ## ✅ Features
 
-- Automatic login via Momentum’s public API (OAuth2/PKCE)
-- Fetch queue points for categories like Housing, Parking, Storage
+- Automatic login using OAuth2/PKCE (Momentum API)
+- Fetches queue points (e.g., housing, parking, storage)
 - Automatic logout
-- Modular setup for supporting multiple sites
-- Configurable via `.env`
-- Designed to run headlessly on a home server or cron job
+- Modular site support (driven by database)
+- Centralized credential storage via MariaDB
+- Dockerized and scalable via Docker Swarm
+
+---
 
 ## 📁 Project Structure
 
 ```bash
 /
-├── sites/                  # One file per supported site (e.g., KBAB, Gavlegårdarna)
-│   ├── kbab.py
-│   └── ...
-├── utils/
-│   └── momentum_client.py  # Shared logic for communicating with Momentum API
-├── config/
-│   └── .env                # Stores login credentials and secrets
-├── main.py                 # Entry point to run a specific site
-├── logs/                   # Optional: store log history
-└── README.md
+├── app/
+│   ├── config/              # Contains .env
+│   ├── logs/                # Optional logging
+│   ├── sites/               # Site logic (momentum.py)
+│   ├── utils/               # DB and API helpers
+│   │   ├── db.py
+│   │   └── momentum_client.py
+│   ├── main.py              # Main entry point
+│   └── requirements.txt     # Python dependencies
+├── docker-compose.yml       # For running via Docker
+├── Dockerfile               # Builds the container
+├── README.md
+└── .gitignore
 ```
+
+---
 
 ## ⚙️ Setup
 
-1. Install dependencies
+1. Create MariaDB database with `credentials` and `sites` tables.
+2. Create a `.env` file inside `app/config/`:
 
-    pip install -r requirements.txt
+```ini
+DB_HOST=your-db-host
+DB_USER=your-db-user
+DB_PASS=your-db-password
+DB_NAME=queue_pilot
+```
 
-2. Create `.env` file in `config/` with your credentials
+3. Build and run with Docker:
 
-    KBAB_USERNAME=your_username
-    KBAB_PASSWORD=your_password
+```bash
+docker compose up --build
+```
 
-You can later add credentials for other sites as needed.
+---
 
-## 🚀 Running
+## 🐳 Docker Tips
 
-Run login and point-check for a specific site:
+- Edit `CMD` in Dockerfile to run a specific site or `all`
+- Logs go to `app/logs/` by default
+- Use volume mounts for persistence
 
-    python sites/kbab.py
+---
 
-Or, if using `main.py` with CLI flags (future feature):
+## 🐝 Docker Swarm (Preview)
 
-    python main.py --site kbab
+QueuePilot is designed to scale. Each customer/job can run in parallel as needed.
 
-## ➕ Adding a New Site
+```bash
+docker swarm init
+docker stack deploy -c docker-compose.yml queuepilot
+```
 
-Each site typically differs only in domain and authentication keys. To add support for another site:
+In the future: queue consumers and autoscaling via Docker events or task queues.
 
-1. Copy `kbab.py` to `newsite.py`
+---
 
-2. Update the `base_url`, `client_id`, `device_key`, and `api_key`
-3. Add corresponding credentials to `.env`
+## 🛡 Security Tips
 
-## 📅 Automation
+- Never store real passwords in code or VCS
+- Use hashed or encrypted secrets where possible
 
-You can run this monthly using `cron`, `systemd`, or a Python scheduler like `schedule`. Example cron job:
+---
 
-    0 8 1 * * /usr/bin/python3 /path/to/project/sites/kbab.py
+## 🧩 Roadmap
 
-## 🔐 Security Notes
-
-- Never commit your `.env` file to version control
-- If running publicly, consider encrypting credentials and using secure vaults
-
-## 🧩 To Do
-
-- CLI interface for selecting and running sites
-- Logging with timestamped history
-- Notifications via email or Telegram
-- Docker support
+- Web interface for queue selection and user management
+- Notification integrations
+- Job scheduler backend (e.g., Celery)
