@@ -1,0 +1,8 @@
+{
+  "python.analysis.extraPaths": [
+    "./",
+    "./utils",
+    "./app"
+],
+  "python.linting.pylintArgs": ["--init-hook", "import sys; sys.path.append('./')"]
+}

@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  queuepilot:
+    build: .
+    container_name: queuepilot
+    restart: unless-stopped
+    networks:
+      - vlan10_net
+    environment:
+      - DB_HOST=10.0.50.100
+      - DB_USER=queue_pilot
+      - DB_PASS=Jjcr*GEIajv4x37j
+      - DB_NAME=queue_pilot
+    volumes:
+      - ./app:/app
+      - ./logs:/app/logs
+
+volumes:
+  db_data:
+
+networks:
+  vlan10_net:
+    external: true
+    name: vlan10_net
