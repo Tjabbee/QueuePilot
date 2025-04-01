@@ -1,19 +1,10 @@
-import os
 import argparse
-import mysql.connector
-from dotenv import load_dotenv
 
 from sites.momentum import run
-
-load_dotenv(dotenv_path="app/config/.env")
+from utils.db import get_connection
 
 def get_all_sites():
-    conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        database=os.getenv("DB_NAME")
-    )
+    conn = get_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
     cursor.execute(
         "SELECT url_name FROM sites"

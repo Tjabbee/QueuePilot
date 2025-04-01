@@ -7,17 +7,13 @@ import requests
 import mysql.connector
 from dotenv import load_dotenv
 from utils.momentum_client import MomentumClient
+from utils.db import get_connection
 
 load_dotenv(dotenv_path="app/config/.env")
 
 
 def fetch_credentials(site, customer_id):
-    conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        database=os.getenv("DB_NAME")
-    )
+    conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         "SELECT username, password FROM credentials WHERE site=%s AND customer_id=%s AND active=1",
@@ -34,12 +30,7 @@ def fetch_credentials(site, customer_id):
     return result["username"], result["password"]
 
 def get_site(site):
-    conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        database=os.getenv("DB_NAME")
-    )
+    conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         "SELECT * FROM sites WHERE url_name=%s",
@@ -82,22 +73,22 @@ def login(username, password, url_name, base_url):
         "requestRefreshToken": True
     }
 
-    response = requests.post(f"{base_url}/auth", json=payload, timeout=5)
+    response = requests.post(f"{base_url}/auth", json=payload, timeout=10)
     data = response.json()
 
     if "completed" in data:
-        print("✅ Inloggning lyckades!")
+        print(f"{url_name}:✅ Inloggning lyckades!")
         access_token = data["completed"]["accessToken"]
         return access_token
     else:
-        print("❌ Inloggning misslyckades:", data)
+        print(f"{url_name}:❌ Inloggning misslyckades:", data)
         return None
 
 
-def get_points(client: MomentumClient):
+def get_points(client: MomentumClient, url_name):
     resp = client.get("/market/applicant/status")
     if resp.status_code != 200:
-        print("❌ Kunde inte hämta poäng:", resp.status_code)
+        print(f"{url_name}:❌ Kunde inte hämta poäng: ", resp.status_code)
         print(resp.text)
         return
 
@@ -122,7 +113,7 @@ def logout(client: MomentumClient, url_name):
     if resp.status_code == 200:
         print("🚪 Utloggning lyckades.")
     else:
-        print(f"⚠️ Utloggning misslyckades ({resp.status_code}): {resp.text}")
+        print(f"{url_name}:⚠️ Utloggning misslyckades ({resp.status_code}): {resp.text}")
 
 
 def run(site):
@@ -138,7 +129,7 @@ def run(site):
     )
     client.set_token(token)
 
-    get_points(client)
+    get_points(client, url_name)
     logout(client, url_name)
 
 
