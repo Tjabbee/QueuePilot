@@ -4,8 +4,9 @@ services:
     build: .
     container_name: queuepilot
     restart: unless-stopped
+    # Change network to match your setup
     networks:
-      - vlan10_net
+      - vlan20_net
     env_file:
       - .env
     volumes:
@@ -15,7 +16,8 @@ services:
 volumes:
   db_data:
 
+# This might not be needed if you have your own network setup
 networks:
   vlan10_net:
     external: true
-    name: vlan10_net
+    name: vlan20_net
