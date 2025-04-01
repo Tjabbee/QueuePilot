@@ -39,7 +39,7 @@ QueuePilot automates monthly logins to various Swedish municipal housing queue w
 ## ⚙️ Setup
 
 1. Create MariaDB database with `credentials` and `sites` tables.
-2. Create a `.env` file inside `app/config/`:
+2. Create a `.env` file in the same folder as `docker-compose.yml` (root directory `/`):
 
 ```ini
 DB_HOST=your-db-host

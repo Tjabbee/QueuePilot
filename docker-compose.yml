@@ -6,11 +6,8 @@ services:
     restart: unless-stopped
     networks:
       - vlan10_net
-    environment:
-      - DB_HOST=10.0.50.100
-      - DB_USER=queue_pilot
-      - DB_PASS=Jjcr*GEIajv4x37j
-      - DB_NAME=queue_pilot
+    env_file:
+      - .env
     volumes:
       - ./app:/app
       - ./logs:/app/logs
