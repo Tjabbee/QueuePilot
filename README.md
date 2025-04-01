@@ -89,3 +89,4 @@ In the future: queue consumers and autoscaling via Docker events or task queues.
 - Web interface for queue selection and user management
 - Notification integrations
 - Job scheduler backend (e.g., Celery)
+- Add other websites not using momentum (Already have two sites ready)
