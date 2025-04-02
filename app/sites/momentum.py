@@ -12,17 +12,28 @@ Used by main.py to automate queue maintenance across multiple sites.
 """
 
 from typing import Tuple
+import os
 import base64
 import hashlib
 import secrets
+import datetime
+import logging
 
 import requests
-from dotenv import load_dotenv
 from utils.db import get_connection
 from utils.momentum_client import MomentumClient
 
-load_dotenv(dotenv_path="app/config/.env")
-
+LOG_DIR = "logs"
+CUSTOMER_ID = 1
+os.makedirs(LOG_DIR, exist_ok=True)
+log_filename = datetime.date.today().strftime("%Y-%m-%d") + ".log"
+log_path = os.path.join(LOG_DIR, log_filename)
+logging.basicConfig(
+    filename=log_path,
+    level=logging.INFO,
+    format='[%(asctime)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
 
 def fetch_credentials(site: str, customer_id: int) -> Tuple[str, str]:
     """
@@ -132,11 +143,11 @@ def login(username: str, password: str, url_name: str, base_url: str) -> str | N
     data = response.json()
 
     if "completed" in data:
-        print(f"{url_name}:✅ Login successful!")
+        logging.info("✅ Login to %s succeeded!", url_name)
         access_token = data["completed"]["accessToken"]
         return access_token
     else:
-        print(f"{url_name}:❌ Login failed:", data)
+        logging.error("❌ Login to %s failed: %s", url_name, data)
         return None
 
 
@@ -150,17 +161,17 @@ def get_points(client: MomentumClient, url_name: str) -> None:
     """
     resp = client.get("/market/applicant/status")
     if resp.status_code != 200:
-        print(f"{url_name}:❌ Could not retrieve points:", resp.status_code)
-        print(resp.text)
+        logging.error("❌ Could not retrieve points from %s: %s", url_name, resp.status_code)
+        logging.error(resp.text)
         return
 
     data = resp.json()
-    print("🔍 Köpoäng:")
+    logging.info("🔍 Queue Points:")
     for queue in data.get("queues", []):
-        name = queue.get("displayName", "Okänd kö")
-        points = queue.get("value", "okänt")
+        name = queue.get("displayName", "Unknown queue")
+        points = queue.get("value", "unknown")
         unit = queue.get("valueUnitDisplayName", "")
-        print(f" - {name}: {points} {unit}")
+        logging.info(" - %s: %s %s", name, points, unit)
 
 
 def logout(client: MomentumClient, url_name: str) -> None:
@@ -178,9 +189,9 @@ def logout(client: MomentumClient, url_name: str) -> None:
     }
     resp = client.post("/auth/logout", json=payload)
     if resp.status_code == 200:
-        print(f"{url_name}🚪 Logout successful.")
+        logging.info("🚪 Logout from %s successful.", url_name)
     else:
-        print(f"{url_name}:⚠️ Logout failed ({resp.status_code}): {resp.text}")
+        logging.error("⚠️ Logout from %s failed (%s): %s", url_name, resp.status_code, resp.text)
 
 
 def run(site: str) -> None:
@@ -192,6 +203,7 @@ def run(site: str) -> None:
     """
     url_name, base_url, api_key = get_site(site)
     username, password = fetch_credentials(url_name, customer_id=1)
+    logging.info("*********** %s ***********", url_name)
     token = login(username, password, url_name, base_url)
     if not token:
         return
@@ -201,7 +213,7 @@ def run(site: str) -> None:
 
     get_points(client, url_name)
     logout(client, url_name)
-
+    logging.info("*********** %s ***********", url_name)
 
 if __name__ == "__main__":
     run(site="")

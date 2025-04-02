@@ -1,9 +1,8 @@
-version: "3.9"
 services:
   queuepilot:
     build: .
     container_name: queuepilot
-    restart: unless-stopped
+    restart: no
     # Change network to match your setup
     networks:
       - vlan20_net
@@ -18,6 +17,6 @@ volumes:
 
 # This might not be needed if you have your own network setup
 networks:
-  vlan10_net:
+  vlan20_net:
     external: true
     name: vlan20_net
