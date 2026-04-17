@@ -93,6 +93,19 @@ export default function SiteForm() {
             Site Configuration
           </h2>
 
+          {/* System type */}
+          <div>
+            <label htmlFor="system_type" className="form-label">System / Platform</label>
+            <select id="system_type" value={form.system_type}
+              onChange={(e) => set('system_type', e.target.value)}
+              className="form-select">
+              {SYSTEM_TYPES.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <p className="form-helper">The platform used by this housing community.</p>
+          </div>
+
           {/* Site ID */}
           <div>
             <label htmlFor="url_name" className="form-label">
@@ -127,19 +140,6 @@ export default function SiteForm() {
               placeholder="KBAB — Karlstads Bostads AB"
               className="form-input" />
             <p className="form-helper">Human-readable name shown in the dashboard.</p>
-          </div>
-
-          {/* System type */}
-          <div>
-            <label htmlFor="system_type" className="form-label">System / Platform</label>
-            <select id="system_type" value={form.system_type}
-              onChange={(e) => set('system_type', e.target.value)}
-              className="form-select">
-              {SYSTEM_TYPES.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-            <p className="form-helper">The platform used by this housing community.</p>
           </div>
 
           {/* Momentum fields */}
@@ -182,7 +182,7 @@ export default function SiteForm() {
                 onChange={(e) => set('base_url', e.target.value)}
                 placeholder="https://minasidor.vatterhem.se"
                 className="form-input" />
-              <p className="form-helper">The Vitec Arena site root URL — no trailing slash.</p>
+              <p className="form-helper">The Vitec Arena site root URL.</p>
             </div>
           )}
         </div>

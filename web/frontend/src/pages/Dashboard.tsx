@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Plus, Play, ChevronDown, Pencil, Trash2, Loader2,
   AlertTriangle, Inbox, RefreshCw, Clock, ArrowUpDown,
-  ArrowUp, ArrowDown, XCircle,
+  ArrowUp, ArrowDown, XCircle, Search, X,
 } from 'lucide-react'
 import { api } from '../api'
 import { useToast } from '../App'
@@ -272,18 +272,22 @@ const SYSTEM_LABEL: Record<string, string> = { momentum: 'Momentum', vitec: 'Vit
 
 export default function Dashboard() {
   const { addToast } = useToast()
-  const [data, setData]       = useState<SitesResponse | null>(null)
-  const [status, setStatus]   = useState<ContainerStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [runBusy, setRunBusy] = useState(false)
-  const [loadErr, setLoadErr] = useState<string | null>(null)
-  const [filter, setFilter]   = useState('all')
-  const [showInactive, setShowInactive] = useState(false)
-  const [expanded, setExpanded]         = useState<Set<string>>(new Set())
-  const [sortCol, setSortCol]           = useState<SortCol>(null)
-  const [sortAsc, setSortAsc]           = useState(true)
-  const [deletingId, setDeletingId]     = useState<string | null>(null)
-  const [confirmDel, setConfirmDel]     = useState<string | null>(null)
+  const [data, setData]                     = useState<SitesResponse | null>(null)
+  const [status, setStatus]                 = useState<ContainerStatus | null>(null)
+  const [loading, setLoading]               = useState(true)
+  const [runBusy, setRunBusy]               = useState(false)
+  const [loadErr, setLoadErr]               = useState<string | null>(null)
+  const [filter, setFilter]                 = useState('all')
+  const [search, setSearch]                 = useState('')
+  const [showInactive, setShowInactive]     = useState(() => localStorage.getItem('showInactive') === 'true')
+  const [expanded, setExpanded]             = useState<Set<string>>(new Set())
+  const [sortCol, setSortCol]               = useState<SortCol>(() => (localStorage.getItem('sortCol') as SortCol) ?? null)
+  const [sortAsc, setSortAsc]               = useState(() => localStorage.getItem('sortAsc') !== 'false')
+  const [page, setPage]                     = useState(0)
+  const [deletingId, setDeletingId]         = useState<string | null>(null)
+  const [confirmDel, setConfirmDel]         = useState<string | null>(null)
+
+  const PAGE_SIZE = 10
 
   const loadAll = useCallback(async () => {
     try {
@@ -354,8 +358,20 @@ export default function Dashboard() {
     setExpanded((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const handleSort = (col: SortCol) => {
-    if (sortCol === col) setSortAsc((a) => !a)
-    else { setSortCol(col); setSortAsc(true) }
+    let newCol: SortCol
+    let newAsc: boolean
+    if (sortCol !== col) {
+      newCol = col; newAsc = true               // 1st click: sort asc
+    } else if (sortAsc) {
+      newCol = col; newAsc = false              // 2nd click: sort desc
+    } else {
+      newCol = null; newAsc = true              // 3rd click: reset
+    }
+    setSortCol(newCol)
+    setSortAsc(newAsc)
+    setPage(0)
+    localStorage.setItem('sortCol', newCol ?? '')
+    localStorage.setItem('sortAsc', String(newAsc))
   }
 
   const allTypes = useMemo(() =>
@@ -365,6 +381,16 @@ export default function Dashboard() {
     let sites = data?.sites ?? []
     if (filter !== 'all') sites = sites.filter((s) => s.system_type === filter)
     if (!showInactive) sites = sites.filter((s) => s.active)
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      const SYSTEM_MAP: Record<string, string> = { momentum: 'momentum', vitec: 'vitec arena' }
+      sites = sites.filter((s) => [
+        s.fullname, s.url_name, s.username,
+        SYSTEM_MAP[s.system_type] ?? s.system_type,
+        s.last_login, s.queue_points?.toString(),
+        ...s.queue_details.map((d) => `${d.name} ${d.points} ${d.unit}`),
+      ].some((v) => v?.toLowerCase().includes(q)))
+    }
     if (sortCol) {
       sites = [...sites].sort((a, b) => {
         const av = sortCol === 'queue_points' ? (a.queue_points ?? -1)
@@ -381,7 +407,16 @@ export default function Dashboard() {
       })
     }
     return sites
-  }, [data, filter, showInactive, sortCol, sortAsc])
+  }, [data, filter, showInactive, search, sortCol, sortAsc])
+
+  // Reset to page 0 when filter, search, or show-inactive changes
+  useEffect(() => { setPage(0) }, [filter, showInactive, search])
+
+  const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage    = Math.min(page, totalPages - 1)
+  const pageSlice   = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
+  const pageStart   = safePage * PAGE_SIZE + 1
+  const pageEnd     = Math.min((safePage + 1) * PAGE_SIZE, filtered.length)
 
   if (loading) return <Skeleton />
 
@@ -458,6 +493,11 @@ export default function Dashboard() {
           <h1 className="text-base font-semibold text-slate-100">
             Sites
             <span className="ml-2 text-sm font-normal text-slate-500">({filtered.length})</span>
+            {filtered.length > PAGE_SIZE && (
+              <span className="ml-1 text-xs font-normal text-slate-600">
+                · page {safePage + 1}/{totalPages}
+              </span>
+            )}
           </h1>
 
           {allTypes.length > 1 && (
@@ -483,8 +523,30 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowInactive((v) => !v)} className="btn-ghost">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Search */}
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" aria-hidden />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search sites…"
+              aria-label="Search sites"
+              className="form-input pl-8 pr-8 py-1.5 w-44 focus:w-56 transition-[width] duration-200"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          <button onClick={() => setShowInactive((v) => { localStorage.setItem('showInactive', String(!v)); return !v })} className="btn-ghost">
             {showInactive ? 'Hide Inactive' : 'Show Inactive'}
           </button>
           <Link to="/sites/add" className="btn-primary">
@@ -527,16 +589,30 @@ export default function Dashboard() {
                 <tr>
                   <td colSpan={8} className="px-5 py-16 text-center">
                     <Inbox size={34} className="text-slate-700 mx-auto mb-3" aria-hidden />
-                    <p className="text-slate-400 font-medium text-sm">No sites to display</p>
-                    <p className="text-slate-600 text-xs mt-1">
-                      <Link to="/sites/add" className="text-primary hover:text-primary-light underline">
-                        Add a site
-                      </Link>{' '}
-                      to get started
-                    </p>
+                    {search.trim() ? (
+                      <>
+                        <p className="text-slate-400 font-medium text-sm">No results for "{search}"</p>
+                        <p className="text-slate-600 text-xs mt-1">
+                          Try a different search term or{' '}
+                          <button onClick={() => setSearch('')} className="text-primary hover:text-primary-light underline cursor-pointer">
+                            clear the search
+                          </button>
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-slate-400 font-medium text-sm">No sites to display</p>
+                        <p className="text-slate-600 text-xs mt-1">
+                          <Link to="/sites/add" className="text-primary hover:text-primary-light underline">
+                            Add a site
+                          </Link>{' '}
+                          to get started
+                        </p>
+                      </>
+                    )}
                   </td>
                 </tr>
-              ) : filtered.map((site) => (
+              ) : pageSlice.map((site) => (
                 <SiteRow
                   key={site.url_name}
                   site={site}
@@ -551,6 +627,31 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs text-slate-500">
+            {pageStart}–{pageEnd} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-30"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-30"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {confirmDel && (
         <DeleteModal
