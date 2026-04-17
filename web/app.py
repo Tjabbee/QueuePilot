@@ -1,10 +1,8 @@
 """
-QueuePilot Web Interface
+QueuePilot Web API
 
-Flask application for managing housing queue sites.
-Provides CRUD operations on the `sites` and `credentials` MariaDB tables.
-Supports multiple platform types (Momentum, Kjellberg, etc.) with
-filtering by system_type on the dashboard.
+REST API backend for the QueuePilot React frontend.
+All HTML rendering is handled by React; Flask serves JSON + static assets.
 """
 
 import os
@@ -14,9 +12,14 @@ import docker
 import mysql.connector
 from zoneinfo import ZoneInfo
 from cryptography.fernet import Fernet
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 
 _STOCKHOLM = ZoneInfo("Europe/Stockholm")
+CONTAINER_NAME = "queuepilot"
+CUSTOMER_ID = 1
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "queuepilot-dev-secret-change-me")
 
 
 def _to_stockholm(dt: datetime.datetime | None) -> datetime.datetime | None:
@@ -25,18 +28,6 @@ def _to_stockholm(dt: datetime.datetime | None) -> datetime.datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ZoneInfo("UTC"))
     return dt.astimezone(_STOCKHOLM)
-
-CONTAINER_NAME = "queuepilot"
-
-SYSTEM_TYPES = [
-    ("momentum", "Momentum"),
-    ("vitec", "Vitec Arena"),
-]
-
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "queuepilot-dev-secret-change-me")
-
-CUSTOMER_ID = 1
 
 
 def _fernet() -> Fernet:
@@ -53,12 +44,11 @@ def get_connection():
         host=os.environ["DB_HOST"],
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASS"],
-        database=os.environ["DB_NAME"]
+        database=os.environ["DB_NAME"],
     )
 
 
 def ensure_schema():
-    """Applies missing schema migrations (idempotent)."""
     conn = get_connection()
     cursor = conn.cursor()
     migrations = [
@@ -102,7 +92,7 @@ def set_setting(key: str, value: str) -> None:
     cursor.execute(
         "INSERT INTO settings (`key`, `value`) VALUES (%s, %s) "
         "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
-        (key, value)
+        (key, value),
     )
     conn.commit()
     cursor.close()
@@ -110,7 +100,6 @@ def set_setting(key: str, value: str) -> None:
 
 
 def get_container_info() -> dict:
-    """Returns status and last-finished time for the queuepilot container."""
     try:
         client = docker.from_env()
         container = client.containers.get(CONTAINER_NAME)
@@ -130,227 +119,87 @@ def get_container_info() -> dict:
         return {"status": "error", "finished_at": None, "error": str(e)}
 
 
-@app.route("/")
-def index():
+# ── API Routes ────────────────────────────────────────────────────────────────
+
+@app.route("/api/sites", methods=["GET"])
+def api_list_sites():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""
-        SELECT s.url_name, s.fullname, s.system_type, s.momentum_id,
+        SELECT s.url_name, s.fullname, s.system_type, s.momentum_id, s.base_url,
                c.username, c.active, c.last_login, c.queue_points, c.queue_details
         FROM sites s
         LEFT JOIN credentials c ON c.site = s.url_name AND c.customer_id = %s
         ORDER BY s.system_type, s.url_name
     """, (CUSTOMER_ID,))
-    sites = cursor.fetchall()
-    for s in sites:
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    sites = []
+    totals: dict = {"all": 0}
+    for s in rows:
         raw = s.get("queue_details")
-        s["queue_details"] = json.loads(raw) if raw else []
-        s["last_login"] = _to_stockholm(s.get("last_login"))
-    cursor.close()
-    conn.close()
-    container = get_container_info()
-
-    system_labels = dict(SYSTEM_TYPES)
-    all_system_types = sorted({s["system_type"] for s in sites if s.get("system_type")})
-
-    # Total points per system type and across all sites
-    totals = {}
-    for s in sites:
+        details = json.loads(raw) if raw else []
+        ll = _to_stockholm(s.get("last_login"))
         pts = s.get("queue_points")
+        st = s.get("system_type", "momentum")
         if pts is not None:
-            st = s.get("system_type", "momentum")
             totals[st] = totals.get(st, 0) + pts
-    totals["all"] = sum(totals.values())
+            totals["all"] += pts
+        sites.append({
+            "url_name": s["url_name"],
+            "fullname": s.get("fullname") or s["url_name"],
+            "system_type": st,
+            "momentum_id": s.get("momentum_id"),
+            "base_url": s.get("base_url"),
+            "username": s.get("username"),
+            "active": bool(s.get("active")),
+            "last_login": ll.strftime("%Y-%m-%d %H:%M") if ll else None,
+            "queue_points": pts,
+            "queue_details": details,
+        })
 
-    has_momentum = any(s.get("system_type") == "momentum" for s in sites)
-    api_key_missing = has_momentum and not get_setting("momentum_api_key")
-
-    return render_template(
-        "index.html",
-        sites=sites,
-        container=container,
-        all_system_types=all_system_types,
-        system_labels=system_labels,
-        totals=totals,
-        api_key_missing=api_key_missing,
-    )
-
-
-@app.route("/sites/add", methods=["GET", "POST"])
-def add_site():
-    if request.method == "POST":
-        url_name = request.form["url_name"].strip().lower()
-        fullname = request.form["fullname"].strip()
-        system_type = request.form.get("system_type", "momentum").strip()
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        active = 1 if request.form.get("active") else 0
-
-        if system_type == "momentum":
-            momentum_id = request.form.get("momentum_id", "").strip()
-            base_url = None
-        else:
-            momentum_id = None
-            base_url = request.form.get("base_url", "").strip().rstrip("/")
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO sites (url_name, fullname, base_url, system_type, momentum_id) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (url_name, fullname, base_url, system_type, momentum_id)
-            )
-            cursor.execute(
-                "INSERT INTO credentials (site, customer_id, username, password, active) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (url_name, CUSTOMER_ID, username, encrypt_password(password), active)
-            )
-            conn.commit()
-            flash(f"Site '{url_name}' added successfully.", "success")
-            return redirect(url_for("index"))
-        except mysql.connector.IntegrityError as e:
-            conn.rollback()
-            flash(f"Could not add site: {e}", "danger")
-        finally:
-            cursor.close()
-            conn.close()
-
-    return render_template("site_form.html", site=None, title="Add Site", system_types=SYSTEM_TYPES)
+    has_momentum = any(s["system_type"] == "momentum" for s in sites)
+    return jsonify({
+        "sites": sites,
+        "totals": totals,
+        "api_key_missing": has_momentum and not get_setting("momentum_api_key"),
+    })
 
 
-@app.route("/sites/<url_name>/edit", methods=["GET", "POST"])
-def edit_site(url_name):
-    if request.method == "POST":
-        fullname = request.form["fullname"].strip()
-        system_type = request.form.get("system_type", "momentum").strip()
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        active = 1 if request.form.get("active") else 0
+@app.route("/api/sites", methods=["POST"])
+def api_create_site():
+    data = request.get_json() or {}
+    url_name = (data.get("url_name") or "").strip().lower()
+    fullname = (data.get("fullname") or "").strip()
+    system_type = (data.get("system_type") or "momentum").strip()
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    active = int(bool(data.get("active", True)))
 
-        if system_type == "momentum":
-            momentum_id = request.form.get("momentum_id", "").strip()
-            base_url = None
-        else:
-            momentum_id = None
-            base_url = request.form.get("base_url", "").strip().rstrip("/")
+    if not url_name or not fullname or not username or not password:
+        return jsonify({"error": "Missing required fields"}), 400
 
-        conn = get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "UPDATE sites SET fullname=%s, base_url=%s, system_type=%s, "
-                "momentum_id=%s WHERE url_name=%s",
-                (fullname, base_url, system_type, momentum_id, url_name)
-            )
-            if password:
-                cursor.execute(
-                    "UPDATE credentials SET username=%s, password=%s, active=%s "
-                    "WHERE site=%s AND customer_id=%s",
-                    (username, encrypt_password(password), active, url_name, CUSTOMER_ID)
-                )
-            else:
-                cursor.execute(
-                    "UPDATE credentials SET username=%s, active=%s "
-                    "WHERE site=%s AND customer_id=%s",
-                    (username, active, url_name, CUSTOMER_ID)
-                )
-            conn.commit()
-            flash(f"Site '{url_name}' updated.", "success")
-            return redirect(url_for("index"))
-        except Exception as e:
-            conn.rollback()
-            flash(f"Could not update site: {e}", "danger")
-        finally:
-            cursor.close()
-            conn.close()
+    momentum_id = (data.get("momentum_id") or "").strip() or None if system_type == "momentum" else None
+    base_url = ((data.get("base_url") or "").strip().rstrip("/") or None) if system_type == "vitec" else None
 
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT s.url_name, s.fullname, s.base_url, s.system_type,
-               s.momentum_id,
-               c.username, c.active
-        FROM sites s
-        LEFT JOIN credentials c ON c.site = s.url_name AND c.customer_id = %s
-        WHERE s.url_name = %s
-    """, (CUSTOMER_ID, url_name))
-    site = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    if not site:
-        flash(f"Site '{url_name}' not found.", "danger")
-        return redirect(url_for("index"))
-
-    return render_template("site_form.html", site=site, title="Edit Site", system_types=SYSTEM_TYPES)
-
-
-@app.route("/settings", methods=["GET", "POST"])
-def settings():
-    if request.method == "POST":
-        api_key = request.form.get("momentum_api_key", "").strip()
-        set_setting("momentum_api_key", api_key)
-        flash("Settings saved.", "success")
-        return redirect(url_for("settings"))
-
-    current_api_key = get_setting("momentum_api_key")
-    return render_template("settings.html", momentum_api_key=current_api_key, api_key_missing=not current_api_key)
-
-
-@app.route("/api/status")
-def api_status():
-    info = get_container_info()
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT site, last_login FROM credentials WHERE customer_id=%s", (CUSTOMER_ID,))
-    logins = {
-        row["site"]: _to_stockholm(row["last_login"]).strftime("%Y-%m-%d %H:%M") if row["last_login"] else None
-        for row in cursor.fetchall()
-    }
-    cursor.close()
-    conn.close()
-    return jsonify({"container_status": info["status"], "last_logins": logins})
-
-
-@app.route("/run", methods=["POST"])
-def run_now():
-    try:
-        client = docker.from_env()
-        container = client.containers.get(CONTAINER_NAME)
-        if container.status == "running":
-            flash("Queue update is already running.", "warning")
-        else:
-            container.start()
-            flash("Queue update started.", "success")
-    except docker.errors.NotFound:
-        flash(
-            f"Container '{CONTAINER_NAME}' not found. "
-            "Make sure it has been created with docker compose up.",
-            "danger"
-        )
-    except Exception as e:
-        flash(f"Could not start container: {e}", "danger")
-    return redirect(url_for("index"))
-
-
-@app.route("/sites/<url_name>/toggle-active", methods=["POST"])
-def toggle_active(url_name):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            "UPDATE credentials SET active = 1 - active "
-            "WHERE site=%s AND customer_id=%s",
-            (url_name, CUSTOMER_ID)
+            "INSERT INTO sites (url_name, fullname, base_url, system_type, momentum_id) VALUES (%s,%s,%s,%s,%s)",
+            (url_name, fullname, base_url, system_type, momentum_id),
+        )
+        cursor.execute(
+            "INSERT INTO credentials (site, customer_id, username, password, active) VALUES (%s,%s,%s,%s,%s)",
+            (url_name, CUSTOMER_ID, username, encrypt_password(password), active),
         )
         conn.commit()
-        cursor.execute(
-            "SELECT active FROM credentials WHERE site=%s AND customer_id=%s",
-            (url_name, CUSTOMER_ID)
-        )
-        row = cursor.fetchone()
-        return jsonify({"active": row[0] if row else 0})
+        return jsonify({"ok": True, "url_name": url_name})
+    except mysql.connector.IntegrityError as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 409
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
@@ -359,22 +208,169 @@ def toggle_active(url_name):
         conn.close()
 
 
-@app.route("/sites/<url_name>/delete", methods=["POST"])
-def delete_site(url_name):
+@app.route("/api/sites/<url_name>", methods=["GET"])
+def api_get_site(url_name):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT s.url_name, s.fullname, s.base_url, s.system_type, s.momentum_id,
+               c.username, c.active
+        FROM sites s
+        LEFT JOIN credentials c ON c.site = s.url_name AND c.customer_id = %s
+        WHERE s.url_name = %s
+    """, (CUSTOMER_ID, url_name))
+    site = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not site:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({
+        "url_name": site["url_name"],
+        "fullname": site.get("fullname") or "",
+        "system_type": site.get("system_type", "momentum"),
+        "momentum_id": site.get("momentum_id") or "",
+        "base_url": site.get("base_url") or "",
+        "username": site.get("username") or "",
+        "active": bool(site.get("active")),
+    })
+
+
+@app.route("/api/sites/<url_name>", methods=["PUT"])
+def api_update_site(url_name):
+    data = request.get_json() or {}
+    fullname = (data.get("fullname") or "").strip()
+    system_type = (data.get("system_type") or "momentum").strip()
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    active = int(bool(data.get("active", True)))
+
+    momentum_id = (data.get("momentum_id") or "").strip() or None if system_type == "momentum" else None
+    base_url = ((data.get("base_url") or "").strip().rstrip("/") or None) if system_type == "vitec" else None
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE sites SET fullname=%s, base_url=%s, system_type=%s, momentum_id=%s WHERE url_name=%s",
+            (fullname, base_url, system_type, momentum_id, url_name),
+        )
+        if password:
+            cursor.execute(
+                "UPDATE credentials SET username=%s, password=%s, active=%s WHERE site=%s AND customer_id=%s",
+                (username, encrypt_password(password), active, url_name, CUSTOMER_ID),
+            )
+        else:
+            cursor.execute(
+                "UPDATE credentials SET username=%s, active=%s WHERE site=%s AND customer_id=%s",
+                (username, active, url_name, CUSTOMER_ID),
+            )
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route("/api/sites/<url_name>", methods=["DELETE"])
+def api_delete_site(url_name):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM credentials WHERE site=%s", (url_name,))
         cursor.execute("DELETE FROM sites WHERE url_name=%s", (url_name,))
         conn.commit()
-        flash(f"Site '{url_name}' deleted.", "success")
+        return jsonify({"ok": True})
     except Exception as e:
         conn.rollback()
-        flash(f"Could not delete site: {e}", "danger")
+        return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()
         conn.close()
-    return redirect(url_for("index"))
+
+
+@app.route("/api/sites/<url_name>/toggle-active", methods=["POST"])
+def api_toggle_active(url_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE credentials SET active = 1 - active WHERE site=%s AND customer_id=%s",
+            (url_name, CUSTOMER_ID),
+        )
+        conn.commit()
+        cursor.execute("SELECT active FROM credentials WHERE site=%s AND customer_id=%s", (url_name, CUSTOMER_ID))
+        row = cursor.fetchone()
+        return jsonify({"active": bool(row[0]) if row else False})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    info = get_container_info()
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT site, last_login FROM credentials WHERE customer_id=%s", (CUSTOMER_ID,))
+    logins = {}
+    for row in cursor.fetchall():
+        ll = _to_stockholm(row["last_login"])
+        logins[row["site"]] = ll.strftime("%Y-%m-%d %H:%M") if ll else None
+    cursor.close()
+    conn.close()
+    return jsonify({
+        "container_status": info["status"],
+        "finished_at": info.get("finished_at"),
+        "last_logins": logins,
+    })
+
+
+@app.route("/api/run", methods=["POST"])
+def api_run():
+    try:
+        client = docker.from_env()
+        container = client.containers.get(CONTAINER_NAME)
+        if container.status == "running":
+            return jsonify({"ok": False, "message": "Already running"})
+        container.start()
+        return jsonify({"ok": True, "message": "Queue update started"})
+    except docker.errors.NotFound:
+        return jsonify({"error": f"Container '{CONTAINER_NAME}' not found — run docker compose up first"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/settings", methods=["GET"])
+def api_get_settings():
+    key = get_setting("momentum_api_key")
+    return jsonify({"momentum_api_key": key, "api_key_missing": not key})
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_update_settings():
+    data = request.get_json() or {}
+    set_setting("momentum_api_key", (data.get("momentum_api_key") or "").strip())
+    return jsonify({"ok": True})
+
+
+# ── SPA catch-all ─────────────────────────────────────────────────────────────
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_spa(path: str):
+    candidate = os.path.join(_STATIC_DIR, path) if path else None
+    if candidate and os.path.isfile(candidate):
+        return send_from_directory(_STATIC_DIR, path)
+    return send_from_directory(_STATIC_DIR, "index.html")
 
 
 ensure_schema()
