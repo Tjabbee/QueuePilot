@@ -2,47 +2,89 @@
 QueuePilot - Main Entry Script
 
 This script is the main entry point for the QueuePilot system.
-It retrieves queue points from various Momentum-based housing platforms 
-by logging in as specific customers and running the scraping logic per site.
+It retrieves queue points from various housing platforms by logging in
+as specific customers and running the scraping logic per site.
 
 Usage:
     python main.py --site kbab
     python main.py --site all
 
 Requires a connected MariaDB database with:
-  - `sites` table: defines url_name and API details
+  - `sites` table: defines url_name, system_type, and API details
   - `credentials` table: defines login credentials per customer and site
 """
 
 import argparse
 from typing import List, Dict
-from sites.momentum import run
-from utils.db import get_connection
+from sites import momentum, kjellberg
+from utils.db import get_connection, ensure_schema
+
+HANDLERS = {
+    "momentum": momentum.run,
+    "vitec": kjellberg.run,
+    "kjellberg": kjellberg.run,  # legacy alias
+}
 
 
 def get_all_sites() -> List[Dict[str, str]]:
     """
-    Retrieve all site entries from the database.
+    Retrieve all sites that have at least one active credential for customer 1.
 
     Returns:
-        List[Dict[str, str]]: A list of dictionaries containing 'url_name' for each site.
-
-    Raises:
-        Exception: If no site data is found in the database.
+        List[Dict]: List of dicts with 'url_name' and 'system_type'.
     """
     conn = get_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
-    cursor.execute(
-        "SELECT url_name FROM sites"
-    )
+    cursor.execute("""
+        SELECT s.url_name, s.system_type
+        FROM sites s
+        INNER JOIN credentials c ON c.site = s.url_name AND c.customer_id = 1 AND c.active = 1
+    """)
     result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return result
+
+
+def get_site(url_name: str) -> Dict[str, str]:
+    """
+    Retrieve a single site entry by url_name.
+
+    Args:
+        url_name (str): The site identifier.
+
+    Returns:
+        Dict with 'url_name' and 'system_type'.
+
+    Raises:
+        LookupError: If the site is not found.
+    """
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True, buffered=True)
+    cursor.execute("SELECT url_name, system_type FROM sites WHERE url_name=%s", (url_name,))
+    result = cursor.fetchone()
     cursor.close()
     conn.close()
 
     if not result:
-        raise LookupError("No data found for all sites")
+        raise LookupError(f"Site '{url_name}' not found in the database.")
 
     return result
+
+
+def dispatch(url_name: str, system_type: str) -> None:
+    """
+    Dispatches execution to the correct site handler.
+
+    Args:
+        url_name (str): The site's identifier.
+        system_type (str): The platform type (e.g. 'momentum', 'kjellberg').
+    """
+    handler = HANDLERS.get(system_type)
+    if handler:
+        handler(url_name)
+    else:
+        print(f"⚠️ Unknown system_type '{system_type}' for site '{url_name}'. Skipping.")
 
 
 def main() -> None:
@@ -63,16 +105,17 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    site = args.site.lower()
+    site_arg = args.site.lower()
 
-    sites = get_all_sites()
-
-    if site == "all":
-        for site in sites:
-            run(site["url_name"])
+    if site_arg == "all":
+        for site in get_all_sites():
+            dispatch(site["url_name"], site.get("system_type", "momentum"))
     else:
-        run(site)
+        site = get_site(site_arg)
+        dispatch(site["url_name"], site.get("system_type", "momentum"))
 
+
+ensure_schema()
 
 if __name__ == "__main__":
     main()

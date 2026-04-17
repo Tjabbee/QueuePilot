@@ -12,6 +12,22 @@ services:
       - ./app:/app
       - ./logs:/app/logs
 
+  # Web interface for managing sites and credentials
+  queuepilot-web:
+    build: ./web
+    container_name: queuepilot-web
+    restart: unless-stopped
+    networks:
+      - vlan20_net
+    env_file:
+      - .env
+    ports:
+      # Change the host port (5000) if it conflicts with something else
+      - "5000:5000"
+    volumes:
+      # Docker socket so the web UI can trigger the queuepilot container
+      - /var/run/docker.sock:/var/run/docker.sock
+
 volumes:
   db_data:
 

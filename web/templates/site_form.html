@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %} — {{ title }}{% endblock %}
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-7 col-lg-6">
+
+        <div class="d-flex align-items-center mb-3">
+            <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary me-3">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+            <h4 class="mb-0 fw-semibold">{{ title }}</h4>
+        </div>
+
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <form method="post" novalidate>
+
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size: 0.75rem; letter-spacing: 1px;">
+                        Site Configuration
+                    </h6>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Site ID
+                            <span class="fw-normal text-muted ms-1" style="font-size: 0.85em;">e.g. kbab, kjellberg</span>
+                        </label>
+                        {% if site %}
+                            <input type="text" class="form-control bg-light" id="urlNameInput" value="{{ site.url_name }}" disabled>
+                            <div class="form-text">Site ID cannot be changed after creation.</div>
+                        {% else %}
+                            <input type="text" class="form-control" name="url_name" id="urlNameInput" required
+                                   pattern="[a-z0-9_-]+"
+                                   placeholder="kbab"
+                                   oninput="updateUrlPreview()"
+                                   title="Lowercase letters, numbers, hyphens, underscores only">
+                            <div class="form-text" id="siteIdHint"></div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Display Name</label>
+                        <input type="text" class="form-control" name="fullname" required
+                               value="{{ site.fullname if site else '' }}"
+                               placeholder="KBAB — Karlstads Bostads AB">
+                        <div class="form-text">Human-readable name shown in the site list.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">System / Platform</label>
+                        <select class="form-select" name="system_type" id="systemTypeSelect" onchange="onSystemChange(this.value)">
+                            {% for value, label in system_types %}
+                            <option value="{{ value }}"
+                                {% if site and site.system_type == value %}selected
+                                {% elif not site and value == 'momentum' %}selected
+                                {% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">The platform used by this housing community.</div>
+                    </div>
+
+                    <div id="momentumFields">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Momentum ID
+                                <span class="fw-normal text-muted ms-1" style="font-size: 0.85em;">path segment in the API URL</span>
+                            </label>
+                            <input type="text" class="form-control" name="momentum_id" id="momentumId"
+                                   value="{{ site.momentum_id if site else '' }}"
+                                   placeholder="Kar"
+                                   oninput="updateUrlPreview()">
+                            <div class="form-text mt-2">
+                                Constructed API URL: <code id="urlPreview"></code>
+                            </div>
+                        </div>
+                        <div class="alert alert-info py-2 px-3 small mb-3">
+                            <i class="bi bi-key me-1"></i>
+                            The Momentum API key is shared across all sites and can be changed in
+                            <a href="{{ url_for('settings') }}" class="alert-link">Settings</a>.
+                        </div>
+                    </div>
+
+                    <div id="vitecFields">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Base URL</label>
+                            <input type="url" class="form-control" name="base_url"
+                                   value="{{ site.base_url if site else '' }}"
+                                   placeholder="https://minasidor.vatterhem.se">
+                            <div class="form-text">The Vitec Arena site root URL — no trailing slash.</div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size: 0.75rem; letter-spacing: 1px;">
+                        Credentials
+                    </h6>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Username / Personnummer</label>
+                        <input type="text" class="form-control" name="username" required
+                               value="{{ site.username if site else '' }}"
+                               placeholder="YYYYMMDD-XXXX">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Password</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="password" id="passwordInput"
+                                   {% if not site %}required{% endif %}
+                                   placeholder="{{ 'Leave blank to keep current password' if site else 'Enter password' }}">
+                            <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()"
+                                    title="Show/hide password">
+                                <i class="bi bi-eye" id="eyeIcon"></i>
+                            </button>
+                        </div>
+                        {% if site %}
+                        <div class="form-text">Leave blank to keep the existing password.</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="active" id="activeToggle"
+                                   {% if not site or site.active %}checked{% endif %}>
+                            <label class="form-check-label fw-semibold" for="activeToggle">Active</label>
+                        </div>
+                        <div class="form-text">Inactive sites are skipped during the queue update run.</div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-check-lg me-1"></i>Save
+                        </button>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary px-4">
+                            Cancel
+                        </a>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function togglePassword() {
+    const input = document.getElementById("passwordInput");
+    const icon = document.getElementById("eyeIcon");
+    if (input.type === "password") {
+        input.type = "text";
+        icon.className = "bi bi-eye-slash";
+    } else {
+        input.type = "password";
+        icon.className = "bi bi-eye";
+    }
+}
+
+function updateUrlPreview() {
+    const urlNameEl = document.getElementById("urlNameInput");
+    const urlName = (urlNameEl ? urlNameEl.value.trim() : "") || "slug";
+    const momentumId = document.getElementById("momentumId").value.trim() || "ID";
+    document.getElementById("urlPreview").textContent =
+        `https://${urlName}-fastighet.momentum.se/Prod/${momentumId}/PmApi/v2`;
+}
+
+function onSystemChange(value) {
+    document.getElementById("momentumFields").style.display = value === "momentum" ? "" : "none";
+    document.getElementById("vitecFields").style.display = value === "vitec" ? "" : "none";
+    const hint = document.getElementById("siteIdHint");
+    if (hint) {
+        hint.innerHTML = value === "momentum"
+            ? 'Lowercase slug used as the subdomain prefix (e.g. <code>kbab</code> → <code>kbab-fastighet.momentum.se</code>).'
+            : 'Lowercase identifier for this site.';
+    }
+}
+
+(function () {
+    const sel = document.getElementById("systemTypeSelect");
+    if (sel) {
+        onSystemChange(sel.value);
+        updateUrlPreview();
+    }
+})();
+</script>
+
+{% endblock %}
