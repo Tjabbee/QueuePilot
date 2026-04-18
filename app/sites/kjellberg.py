@@ -348,7 +348,7 @@ def run(site: str, customer_id: int = 1) -> None:
             conn.close()
 
             points, details = get_queue_info(session, base_url)
-            if points is not None:
+            if points is not None or details:
                 import json
                 conn = get_connection()
                 cursor = conn.cursor()
