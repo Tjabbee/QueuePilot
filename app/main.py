@@ -15,7 +15,11 @@ Requires a connected MariaDB database with:
 """
 
 import argparse
+import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict
+
 from sites import momentum, kjellberg
 from utils.db import get_connection, ensure_schema
 
@@ -24,6 +28,8 @@ HANDLERS = {
     "vitec": kjellberg.run,
     "kjellberg": kjellberg.run,  # legacy alias
 }
+
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", "10"))
 
 
 def get_all_sites() -> List[Dict[str, str]]:
@@ -84,7 +90,7 @@ def dispatch(url_name: str, system_type: str) -> None:
     if handler:
         handler(url_name)
     else:
-        print(f"⚠️ Unknown system_type '{system_type}' for site '{url_name}'. Skipping.")
+        logging.warning("Unknown system_type '%s' for site '%s'. Skipping.", system_type, url_name)
 
 
 def main() -> None:
@@ -108,8 +114,15 @@ def main() -> None:
     site_arg = args.site.lower()
 
     if site_arg == "all":
-        for site in get_all_sites():
-            dispatch(site["url_name"], site.get("system_type", "momentum"))
+        sites = get_all_sites()
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            futures = {pool.submit(dispatch, s["url_name"], s["system_type"]): s for s in sites}
+            for future in as_completed(futures):
+                site = futures[future]
+                try:
+                    future.result()
+                except Exception:
+                    logging.exception("Site %s failed", site["url_name"])
     else:
         site = get_site(site_arg)
         dispatch(site["url_name"], site.get("system_type", "momentum"))
