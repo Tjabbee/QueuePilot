@@ -15,8 +15,8 @@ from utils.db import get_connection
 REFRESH_INTERVAL_DAYS = int(os.getenv("REFRESH_INTERVAL_DAYS", "90"))
 
 
-@celery.task
-def enqueue_stale_credentials() -> str:
+@celery.task(bind=True, max_retries=3, default_retry_delay=60)
+def enqueue_stale_credentials(self) -> str:
     """
     Finds all active credentials not refreshed within REFRESH_INTERVAL_DAYS
     and dispatches a login_credential task for each one.
@@ -28,24 +28,28 @@ def enqueue_stale_credentials() -> str:
     """
     from tasks import login_credential
 
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        """
-        SELECT c.site, c.customer_id, s.system_type
-        FROM credentials c
-        JOIN sites s ON s.url_name = c.site
-        WHERE c.active = 1
-          AND (
-            c.last_login IS NULL
-            OR c.last_login < NOW() - INTERVAL %s DAY
-          )
-        """,
-        (REFRESH_INTERVAL_DAYS,)
-    )
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT c.site, c.customer_id, s.system_type
+            FROM credentials c
+            JOIN sites s ON s.url_name = c.site
+            WHERE c.active = 1
+              AND (
+                c.last_login IS NULL
+                OR c.last_login < NOW() - INTERVAL %s DAY
+              )
+            """,
+            (REFRESH_INTERVAL_DAYS,)
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+    except Exception as exc:
+        logging.exception("Failed to fetch stale credentials from database")
+        raise self.retry(exc=exc)
 
     for row in rows:
         login_credential.delay(row["site"], row["customer_id"], row["system_type"])

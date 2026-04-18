@@ -23,4 +23,6 @@ celery.conf.update(
     result_expires=3600,
     worker_prefetch_multiplier=1,  # one task at a time — HTTP logins are I/O-heavy
     task_acks_late=True,           # re-queue on worker crash; prevents lost tasks
+    timezone="Europe/Stockholm",
+    enable_utc=True,
 )
