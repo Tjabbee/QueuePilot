@@ -1,6 +1,6 @@
 export interface QueueDetail {
   name: string
-  points: number
+  points: number | null
   unit: string
 }
 
