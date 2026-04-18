@@ -26,6 +26,8 @@ def enqueue_stale_credentials(self) -> str:
     Returns:
         A summary string with the number of tasks enqueued.
     """
+    # Deferred import avoids circular dependency: both tasks and scheduler
+    # are included in celery_app, so top-level cross-imports would fail.
     from tasks import login_credential
 
     try:

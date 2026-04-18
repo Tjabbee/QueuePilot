@@ -46,7 +46,10 @@ services:
     build: .
     container_name: queuepilot-celery-beat
     restart: unless-stopped
-    command: celery -A celery_app beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+    command: >
+      celery -A celery_app beat --loglevel=info
+      --scheduler celery.beat.PersistentScheduler
+      --schedule /app/celerybeat-data/celerybeat-schedule
     networks:
       - vlan20_net
     env_file:
@@ -54,7 +57,7 @@ services:
     volumes:
       - ./app:/app
       - ./logs:/app/logs
-      - celery_beat_data:/app/celerybeat-schedule
+      - celery_beat_data:/app/celerybeat-data
 
 volumes:
   db_data:

@@ -52,6 +52,8 @@ def get_all_sites() -> List[Dict[str, str]]:
     """
     conn = get_connection()
     cursor = conn.cursor(dictionary=True, buffered=True)
+    # CLI path is single-user (customer_id=1). Multi-user dispatch is handled
+    # by the Celery scheduler (scheduler.enqueue_stale_credentials).
     cursor.execute("""
         SELECT s.url_name, s.system_type
         FROM sites s
@@ -139,7 +141,6 @@ def main() -> None:
         dispatch(site["url_name"], site.get("system_type", "momentum"))
 
 
-ensure_schema()
-
 if __name__ == "__main__":
+    ensure_schema()
     main()

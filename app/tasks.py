@@ -1,3 +1,10 @@
+"""
+Celery tasks for QueuePilot.
+
+Contains the login_credential task that performs a single housing queue
+login for a specific (site, customer_id) credential pair.
+"""
+
 import logging
 from celery_app import celery
 from handlers import HANDLERS
