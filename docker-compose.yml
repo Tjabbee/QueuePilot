@@ -28,6 +28,7 @@ services:
       # Docker socket so the web UI can trigger the queuepilot container
       - /var/run/docker.sock:/var/run/docker.sock
 
+  # Requires REDIS_URL and DB env vars to be set in .env before starting
   celery-worker:
     build: .
     container_name: queuepilot-celery-worker
@@ -40,8 +41,6 @@ services:
     volumes:
       - ./app:/app
       - ./logs:/app/logs
-    depends_on:
-      - queuepilot-web
 
   celery-beat:
     build: .
@@ -56,8 +55,6 @@ services:
       - ./app:/app
       - ./logs:/app/logs
       - celery_beat_data:/app/celerybeat-schedule
-    depends_on:
-      - queuepilot-web
 
 volumes:
   db_data:
