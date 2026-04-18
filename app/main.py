@@ -15,10 +15,26 @@ Requires a connected MariaDB database with:
 """
 
 import argparse
+import datetime
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict
+from zoneinfo import ZoneInfo as _ZI
+
+# Initialize logging with daily rotation and Stockholm timezone
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+_log_path = os.path.join(LOG_DIR, datetime.date.today().strftime("%Y-%m-%d") + ".log")
+logging.basicConfig(
+    filename=_log_path,
+    level=logging.INFO,
+    format='[%(asctime)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
+logging.Formatter.converter = staticmethod(
+    lambda ts: datetime.datetime.fromtimestamp(ts, tz=_ZI("Europe/Stockholm")).timetuple()
+)
 
 from sites import momentum, kjellberg
 from utils.db import get_connection, ensure_schema
@@ -29,6 +45,7 @@ HANDLERS = {
     "kjellberg": kjellberg.run,  # legacy alias
 }
 
+# Configurable via MAX_WORKERS env var — tune based on number of active sites
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "10"))
 
 
@@ -116,7 +133,7 @@ def main() -> None:
     if site_arg == "all":
         sites = get_all_sites()
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-            futures = {pool.submit(dispatch, s["url_name"], s["system_type"]): s for s in sites}
+            futures = {pool.submit(dispatch, s["url_name"], s.get("system_type", "momentum")): s for s in sites}
             for future in as_completed(futures):
                 site = futures[future]
                 try:
