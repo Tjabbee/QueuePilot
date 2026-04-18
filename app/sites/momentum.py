@@ -262,7 +262,7 @@ def run(site: str, customer_id: int = 1) -> None:
     client.set_token(token)
 
     points, queues = get_points(client, url_name)
-    if points is not None:
+    if points is not None or queues:
         import json
         conn = get_connection()
         cursor = conn.cursor()
