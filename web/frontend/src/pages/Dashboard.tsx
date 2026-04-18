@@ -269,6 +269,8 @@ function Skeleton() {
 // ── Dashboard ─────────────────────────────────────────────────────────────
 
 const SYSTEM_LABEL: Record<string, string> = { momentum: 'Momentum', vitec: 'Vitec Arena' }
+const VALID_SORT_COLS: SortCol[] = ['fullname', 'system_type', 'last_login', 'queue_points']
+const PAGE_SIZE = 10
 
 export default function Dashboard() {
   const { addToast } = useToast()
@@ -278,16 +280,17 @@ export default function Dashboard() {
   const [runBusy, setRunBusy]               = useState(false)
   const [loadErr, setLoadErr]               = useState<string | null>(null)
   const [filter, setFilter]                 = useState('all')
-  const [search, setSearch]                 = useState('')
-  const [showInactive, setShowInactive]     = useState(() => localStorage.getItem('showInactive') === 'true')
+  const [search, setSearch]                 = useState('') // intentionally not persisted — stale searches are confusing
+  const [showInactive, setShowInactive]     = useState(() => localStorage.getItem('qp_showInactive') === 'true')
   const [expanded, setExpanded]             = useState<Set<string>>(new Set())
-  const [sortCol, setSortCol]               = useState<SortCol>(() => (localStorage.getItem('sortCol') as SortCol) ?? null)
-  const [sortAsc, setSortAsc]               = useState(() => localStorage.getItem('sortAsc') !== 'false')
+  const [sortCol, setSortCol]               = useState<SortCol>(() => {
+    const v = localStorage.getItem('qp_sortCol')
+    return VALID_SORT_COLS.includes(v as SortCol) ? (v as SortCol) : null
+  })
+  const [sortAsc, setSortAsc]               = useState(() => localStorage.getItem('qp_sortAsc') !== 'false')
   const [page, setPage]                     = useState(0)
   const [deletingId, setDeletingId]         = useState<string | null>(null)
   const [confirmDel, setConfirmDel]         = useState<string | null>(null)
-
-  const PAGE_SIZE = 10
 
   const loadAll = useCallback(async () => {
     try {
@@ -370,8 +373,8 @@ export default function Dashboard() {
     setSortCol(newCol)
     setSortAsc(newAsc)
     setPage(0)
-    localStorage.setItem('sortCol', newCol ?? '')
-    localStorage.setItem('sortAsc', String(newAsc))
+    localStorage.setItem('qp_sortCol', newCol ?? '')
+    localStorage.setItem('qp_sortAsc', String(newAsc))
   }
 
   const allTypes = useMemo(() =>
@@ -546,7 +549,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <button onClick={() => setShowInactive((v) => { localStorage.setItem('showInactive', String(!v)); return !v })} className="btn-ghost">
+          <button onClick={() => setShowInactive((v) => { localStorage.setItem('qp_showInactive', String(!v)); return !v })} className="btn-ghost">
             {showInactive ? 'Hide Inactive' : 'Show Inactive'}
           </button>
           <Link to="/sites/add" className="btn-primary">

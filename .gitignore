@@ -389,4 +389,4 @@ vite.config.ts.timestamp-*
 
 .claude/
 CLAUDE.md
-.vscode/
+.vscode/.worktrees/
