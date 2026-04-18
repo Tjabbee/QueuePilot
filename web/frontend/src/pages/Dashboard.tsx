@@ -104,7 +104,7 @@ function SiteRow({
   onDeleteRequest: () => void
   isDeleting: boolean
 }) {
-  const hasDetails = site.queue_details.length > 1
+  const hasDetails = site.queue_details.length > 0
 
   return (
     <>
@@ -227,7 +227,7 @@ function SiteRow({
                   <tr key={i}>
                     <td className="text-sm text-slate-300 py-1.5">{q.name}</td>
                     <td className="text-sm font-mono text-right text-primary-light py-1.5 tabular-nums">
-                      {q.points.toLocaleString()}
+                      {q.points != null ? q.points.toLocaleString() : '—'}
                     </td>
                     <td className="text-xs text-slate-500 pl-4 py-1.5">{q.unit}</td>
                   </tr>
