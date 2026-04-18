@@ -28,8 +28,40 @@ services:
       # Docker socket so the web UI can trigger the queuepilot container
       - /var/run/docker.sock:/var/run/docker.sock
 
+  celery-worker:
+    build: .
+    container_name: queuepilot-celery-worker
+    restart: unless-stopped
+    command: celery -A celery_app worker --loglevel=info --concurrency=10
+    networks:
+      - vlan20_net
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app
+      - ./logs:/app/logs
+    depends_on:
+      - queuepilot-web
+
+  celery-beat:
+    build: .
+    container_name: queuepilot-celery-beat
+    restart: unless-stopped
+    command: celery -A celery_app beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+    networks:
+      - vlan20_net
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app
+      - ./logs:/app/logs
+      - celery_beat_data:/app/celerybeat-schedule
+    depends_on:
+      - queuepilot-web
+
 volumes:
   db_data:
+  celery_beat_data:
 
 # This might not be needed if you have your own network setup
 networks:
