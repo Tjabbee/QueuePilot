@@ -25,7 +25,6 @@ from utils.crypto import decrypt_password
 from utils.momentum_client import MomentumClient
 
 LOG_DIR = "logs"
-CUSTOMER_ID = 1
 os.makedirs(LOG_DIR, exist_ok=True)
 log_filename = datetime.date.today().strftime("%Y-%m-%d") + ".log"
 log_path = os.path.join(LOG_DIR, log_filename)
@@ -225,12 +224,13 @@ def logout(client: MomentumClient, url_name: str) -> None:
         logging.error("⚠️ Logout from %s failed (%s): %s", url_name, resp.status_code, resp.text)
 
 
-def run(site: str) -> None:
+def run(site: str, customer_id: int = 1) -> None:
     """
     Main runner for a given site: login, retrieve queue points, logout.
 
     Args:
         site (str): The site's identifier.
+        customer_id (int): The user's credential ID. Defaults to 1 for legacy use.
     """
     url_name = site
     momentum_id = get_site(site)
@@ -242,7 +242,7 @@ def run(site: str) -> None:
         logging.error("❌ Momentum API key is not set — go to Settings and enter the API key.")
         return
     base_url = f"https://{url_name}-fastighet.momentum.se/Prod/{momentum_id}/PmApi/v2"
-    username, password = fetch_credentials(url_name, customer_id=1)
+    username, password = fetch_credentials(url_name, customer_id=customer_id)
     logging.info("*********** %s ***********", url_name)
     token = login(username, password, url_name, base_url)
     if not token:
@@ -252,7 +252,7 @@ def run(site: str) -> None:
     cursor = conn.cursor()
     cursor.execute(
         "UPDATE credentials SET last_login=NOW() WHERE site=%s AND customer_id=%s",
-        (url_name, CUSTOMER_ID)
+        (url_name, customer_id)
     )
     conn.commit()
     cursor.close()
@@ -269,7 +269,7 @@ def run(site: str) -> None:
         cursor.execute(
             "UPDATE credentials SET queue_points=%s, queue_details=%s "
             "WHERE site=%s AND customer_id=%s",
-            (points, json.dumps(queues, ensure_ascii=False), url_name, CUSTOMER_ID)
+            (points, json.dumps(queues, ensure_ascii=False), url_name, customer_id)
         )
         conn.commit()
         cursor.close()
