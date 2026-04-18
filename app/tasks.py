@@ -1,12 +1,6 @@
 import logging
 from celery_app import celery
-from sites import momentum, kjellberg
-
-HANDLERS = {
-    "momentum": momentum.run,
-    "vitec": kjellberg.run,
-    "kjellberg": kjellberg.run,
-}
+from handlers import HANDLERS
 
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=120)

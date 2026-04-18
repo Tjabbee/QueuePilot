@@ -36,14 +36,8 @@ logging.Formatter.converter = staticmethod(
     lambda ts: datetime.datetime.fromtimestamp(ts, tz=_ZI("Europe/Stockholm")).timetuple()
 )
 
-from sites import momentum, kjellberg
+from handlers import HANDLERS
 from utils.db import get_connection, ensure_schema
-
-HANDLERS = {
-    "momentum": momentum.run,
-    "vitec": kjellberg.run,
-    "kjellberg": kjellberg.run,  # legacy alias
-}
 
 # Configurable via MAX_WORKERS env var — tune based on number of active sites
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "10"))
