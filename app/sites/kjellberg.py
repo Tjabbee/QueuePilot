@@ -25,8 +25,6 @@ import requests
 from utils.db import get_connection
 from utils.crypto import decrypt_password
 
-CUSTOMER_ID = 1
-
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 log_filename = datetime.date.today().strftime("%Y-%m-%d") + ".log"
@@ -67,15 +65,16 @@ def fetch_site(site: str) -> str:
     return result["base_url"]
 
 
-def fetch_credentials(site: str) -> Tuple[str, str]:
+def fetch_credentials(site: str, customer_id: int = 1) -> Tuple[str, str]:
     """
-    Fetches username and decrypted password for the given site from the database.
+    Fetches username and decrypted password for the given site and customer.
 
     Args:
         site (str): The site's url_name identifier.
+        customer_id (int): The credential owner's ID. Defaults to 1 for legacy use.
 
     Returns:
-        Tuple[str, str]: The username (personnummer) and plaintext password.
+        Tuple[str, str]: The username and plaintext password.
 
     Raises:
         LookupError: If no active credentials are found.
@@ -85,13 +84,13 @@ def fetch_credentials(site: str) -> Tuple[str, str]:
     cursor.execute(
         "SELECT username, password FROM credentials "
         "WHERE site=%s AND customer_id=%s AND active=1",
-        (site, CUSTOMER_ID)
+        (site, customer_id)
     )
     result = cursor.fetchone()
     cursor.close()
     conn.close()
     if not result:
-        raise LookupError(f"No active credentials found for site '{site}'.")
+        raise LookupError(f"No credentials found for customer {customer_id} on site {site}")
     return result["username"], decrypt_password(result["password"])
 
 
@@ -308,31 +307,20 @@ def logout(session: requests.Session, base_url: str) -> None:
         logging.warning("⚠️ Logout request failed for %s: %s", base_url, e)
 
 
-def _update_last_login(site: str) -> None:
-    """Updates the last_login timestamp in the database for the given site."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE credentials SET last_login=NOW() WHERE site=%s AND customer_id=%s",
-        (site, CUSTOMER_ID)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
 
-
-def run(site: str) -> None:
+def run(site: str, customer_id: int = 1) -> None:
     """
     Main runner for a Vitec Arena site: login, record timestamp, logout.
 
     Args:
-        site (str): The site's url_name identifier from the database.
+        site (str): The site's url_name identifier.
+        customer_id (int): The credential owner's ID. Defaults to 1 for legacy use.
     """
     logging.info("*********** %s (Vitec Arena) ***********", site)
 
     try:
         base_url = fetch_site(site)
-        username, password = fetch_credentials(site)
+        username, password = fetch_credentials(site, customer_id)
     except LookupError as e:
         logging.error("❌ %s", e)
         return
@@ -349,7 +337,16 @@ def run(site: str) -> None:
 
     try:
         if login(session, base_url, username, password):
-            _update_last_login(site)
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE credentials SET last_login=NOW() WHERE site=%s AND customer_id=%s",
+                (site, customer_id)
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+
             points, details = get_queue_info(session, base_url)
             if points is not None:
                 import json
@@ -358,7 +355,7 @@ def run(site: str) -> None:
                 cursor.execute(
                     "UPDATE credentials SET queue_points=%s, queue_details=%s "
                     "WHERE site=%s AND customer_id=%s",
-                    (points, json.dumps(details, ensure_ascii=False), site, CUSTOMER_ID)
+                    (points, json.dumps(details, ensure_ascii=False), site, customer_id)
                 )
                 conn.commit()
                 cursor.close()
